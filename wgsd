@@ -1,0 +1,136 @@
+#!/usr/bin/env python3.8
+# Copyright (C) 2021 Luca Filipozzi <luca.filipozzi@gmail.com>
+
+import click
+import lexicon.client
+import lexicon.config
+import munch
+
+
+class Provider(object):
+    def __init__(self, config: str, domain: str):
+        self.config = config
+        self.domain = domain
+        self.ttl = 300
+
+    def _list(self, rrset_name: str, rrset_type: str):
+        params = munch.Munch()
+        params.action = 'list'
+        params.domain = self.domain
+        params.name = rrset_name
+        params.type = rrset_type
+        return self._execute(params)
+
+    def _create(self, rrset_name: str, rrset_type: str, rrset_value: str):
+        params = munch.Munch()
+        params.action = 'create'
+        params.domain = self.domain
+        params.name = rrset_name
+        params.type = rrset_type
+        params.ttl = self.ttl
+        params.content = rrset_value
+        return self._execute(params)
+
+    def _delete(self, rrset_name: str, rrset_type: str):
+        params = munch.Munch()
+        params.action = 'delete'
+        params.domain = self.domain
+        params.name = rrset_name
+        params.type = rrset_type
+        return self._execute(params)
+
+    def _update(self, rrset_name: str, rrset_type: str, rrset_values: [str]):
+        params = munch.Munch()
+        params.action = 'update'
+        params.domain = self.domain
+        params.name = rrset_name
+        params.type = rrset_type
+        params.ttl = self.ttl
+        params.content = rrset_values
+        return self._execute(params)
+
+    def _execute(self, params):
+        configResolver = lexicon.config.ConfigResolver().with_config_file(self.config).with_dict(params)
+        return lexicon.client.Client(configResolver).execute()
+
+    def create(self, rrset_name: str, rrset_type: str, rrset_value: str):
+        rrset_values = [x['content'] for x in self._list(rrset_name, rrset_type)]
+        if rrset_values:
+            self._update(rrset_name, rrset_type, rrset_value)
+        else:
+            self._create(rrset_name, rrset_type, rrset_value)
+
+    def delete(self, rrset_name: str, rrset_type: str):
+        self._delete(rrset_name, rrset_type)
+
+    def append(self, rrset_name: str, rrset_type: str, rrset_value: str):
+        rrset_values = [x['content'] for x in self._list(rrset_name, rrset_type)]
+        if rrset_values:
+            if rrset_value not in rrset_values:
+                rrset_values.append(rrset_value)
+                self._update(rrset_name, rrset_type, rrset_values)
+        else:
+            self._create(rrset_name, rrset_type, rrset_value)
+
+    def remove(self, rrset_name: str, rrset_type: str, rrset_value: str):
+        rrset_values = [x['content'] for x in self._list(rrset_name, rrset_type)]
+        if rrset_values:
+            if rrset_value in rrset_values:
+                rrset_values.remove(rrset_value)
+                if rrset_values:
+                    self._update(rrset_name, rrset_type, rrset_values)
+                else:
+                    self._delete(rrset_name, rrset_type)
+
+
+@click.group()
+@click.option('--config', type=str, required=True)
+@click.option('--domain', type=str, required=True)
+@click.option('--hostname', type=str, required=True)
+@click.pass_context
+def main(ctx, config, domain, hostname):
+    ctx.ensure_object(dict)
+    ctx.obj.provider = Provider(config, domain)
+    ctx.obj.hostname = hostname
+
+
+@main.command()
+@click.option('--publickey', type=str, required=True)
+@click.option('--ipv4addr', type=str)
+@click.option('--ipv6addr', type=str)
+@click.option('--allowed', type=str)
+@click.pass_obj
+def announce(obj, publickey, ipv4addr, ipv6addr, allowed):
+    sdname = '_wireguard._udp'
+    rrname = f'{obj.hostname}.{sdname}'
+    obj.provider.append(sdname, 'PTR', rrname)
+    obj.provider.create(rrname, 'SRV', f'0 0 51820 {rrname}')
+    if ipv4addr:
+        obj.provider.create(rrname, 'A', ipv4addr)
+    else:
+        obj.provider.delete(rrname, 'A')
+    if ipv6addr:
+        obj.provider.create(rrname, 'AAAA', ipv6addr)
+    else:
+        obj.provider.delete(rrname, 'AAAA')
+    if allowed:
+        obj.provider.create(rrname, 'TXT', f'"txtvers=1" "pub={publickey}" "allowed={allowed}"')
+    else:
+        obj.provider.create(rrname, 'TXT', f'"txtvers=1" "pub={publickey}"')
+
+
+@main.command()
+@click.pass_obj
+def renounce(obj):
+    sdname = '_wireguard._udp'
+    rrname = f'{obj.hostname}.{sdname}'
+    obj.provider.remove(sdname, 'PTR', rrname)
+    obj.provider.delete(rrname, 'SRV')
+    obj.provider.delete(rrname, 'A')
+    obj.provider.delete(rrname, 'AAAA')
+    obj.provider.delete(rrname, 'TXT')
+
+
+if __name__ == '__main__':
+    main(obj=munch.Munch())
+
