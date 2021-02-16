@@ -1,0 +1,44 @@
+#!/usr/bin/env python3.8
+# Copyright (C) 2021 Luca Filipozzi <luca.filipozzi@gmail.com>
+
+import click
+import dns.resolver
+import munch
+
+
+@click.command()
+@click.option('--domain', type=str, required=True)
+def main(domain):
+    nodes = []
+
+    ptr_answer = dns.resolver.resolve(f'_wireguard._udp.{domain}', 'PTR')
+    for ptr_target in [x.target for x in ptr_answer]:
+        node = munch.Munch()
+
+        srv_answer = dns.resolver.resolve(ptr_target, 'SRV')
+        if len(srv_answer) != 1:
+            raise Exception('incorrect number of SRV records')
+        node.port = srv_answer[0].port
+        srv_target = srv_answer[0].target
+
+        txt_answer = dns.resolver.resolve(srv_target, 'TXT')
+        if len(txt_answer) != 1:
+            raise Exception('incorrect number of TXT records')
+        node.update(munch.Munch(x.decode('utf-8').split('=', 1) for x in txt_answer[0].strings))
+
+        a_answer = dns.resolver.resolve(srv_target, 'A')
+        if len(a_answer) != 1:
+            raise Exception('incorrect number of A records')
+        node.address = a_answer[0].address
+
+        nodes.append(node)
+
+    for node in nodes:
+        if node.txtvers != '1':
+            raise Exception('unknown version')
+        print(f'{node.pub} {node.port} {node.address}')
+
+
+if __name__ == '__main__':
+    main()
+
