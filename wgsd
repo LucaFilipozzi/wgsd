@@ -7,6 +7,25 @@
 #
 # This Source Code Form is "Incompatible With Secondary Licenses", as
 # defined by the Mozilla Public License, v. 2.0.
+#
+#
+# This Source Code Form (hereafter 'program') implements a 'server'
+# for DNS-based Service Discovery (DNS-SD; RFC 6763 [1]) that creates 
+# PTR+SRV+TXT(+A) records relating to a wireguard node.
+#
+#
+# usage: wgsd --config config.yaml --domain example.com --hostname blah \
+#          announce --publickey $(wg show wg0 public-key) --ipv4addr '1.2.3.4'
+#
+# where config.yaml contains lexicon[2] configuration directives; e.g.:
+#
+#   provider_name: 'gandi'
+#   gandi:
+#     api_protocol: 'rest'
+#     auth_token: 'replace-me'
+#
+# [1]: https://tools.ietf.org/html/rfc6763
+# [2]: https://github.com/AnalogJ/lexicon
 
 
 import click

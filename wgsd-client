@@ -7,6 +7,17 @@
 #
 # This Source Code Form is "Incompatible With Secondary Licenses", as
 # defined by the Mozilla Public License, v. 2.0.
+#
+#
+# This Source Code Form (hereafter 'program') implements a 'client'
+# for DNS-based Service Discovery (DNS-SD; RFC 6763 [1]) that extracts
+# data from PTR+SRV+TXT records relating to wireguard nodes.
+#
+#
+# usage: wgsd-client --domain example.com
+#
+#
+# [1]: https://tools.ietf.org/html/rfc6763
 
 
 import click
@@ -19,22 +30,28 @@ import munch
 def main(domain):
     nodes = []
 
+    # for each target in the PTR record
     ptr_answer = dns.resolver.resolve(f'_wireguard._udp.{domain}', 'PTR')
     for ptr_target in [x.target for x in ptr_answer]:
         node = munch.Munch()
 
+        # fetch the SRV record to obtain the UDP port
         srv_answer = dns.resolver.resolve(ptr_target, 'SRV')
         if len(srv_answer) != 1:
             raise Exception('incorrect number of SRV records')
         node.port = srv_answer[0].port
-        srv_target = srv_answer[0].target
+        node.target = srv_answer[0].target
 
-        txt_answer = dns.resolver.resolve(srv_target, 'TXT')
+        # fetch the TXT record to obtain the public key
+        txt_answer = dns.resolver.resolve(node.target, 'TXT')
         if len(txt_answer) != 1:
             raise Exception('incorrect number of TXT records')
         node.update(munch.Munch(x.decode('utf-8').split('=', 1) for x in txt_answer[0].strings))
+        if node.txtvers != '1':
+            raise Exception('unknown version')
 
-        a_answer = dns.resolver.resolve(srv_target, 'A')
+        # fetch the A record to obtain the IPv4 address
+        a_answer = dns.resolver.resolve(node.target, 'A')
         if len(a_answer) != 1:
             raise Exception('incorrect number of A records')
         node.address = a_answer[0].address
@@ -42,9 +59,7 @@ def main(domain):
         nodes.append(node)
 
     for node in nodes:
-        if node.txtvers != '1':
-            raise Exception('unknown version')
-        print(f'{node.pub} {node.port} {node.address}')
+        print(f'{node.pub} {node.port} {node.target} {node.address}')
 
 
 if __name__ == '__main__':
