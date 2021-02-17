@@ -25,7 +25,7 @@ import dns.resolver
 try:
     from dns.resolver import resolve as query
 except ImportError:
-    from dns.resolve import query as query
+    from dns.resolver import query as query
 import munch
 
 
