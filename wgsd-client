@@ -22,6 +22,10 @@
 
 import click
 import dns.resolver
+try:
+    from dns.resolver import resolve as query
+except ImportError:
+    from dns.resolve import query as query
 import munch
 
 
@@ -31,19 +35,19 @@ def main(domain):
     nodes = []
 
     # for each target in the PTR record
-    ptr_answer = dns.resolver.resolve(f'_wireguard._udp.{domain}', 'PTR')
+    ptr_answer = query(f'_wireguard._udp.{domain}', 'PTR')
     for ptr_target in [x.target for x in ptr_answer]:
         node = munch.Munch()
 
         # fetch the SRV record to obtain the UDP port
-        srv_answer = dns.resolver.resolve(ptr_target, 'SRV')
+        srv_answer = query(ptr_target, 'SRV')
         if len(srv_answer) != 1:
             raise Exception('incorrect number of SRV records')
         node.port = srv_answer[0].port
         node.target = srv_answer[0].target
 
         # fetch the TXT record to obtain the public key
-        txt_answer = dns.resolver.resolve(node.target, 'TXT')
+        txt_answer = query(node.target, 'TXT')
         if len(txt_answer) != 1:
             raise Exception('incorrect number of TXT records')
         node.update(munch.Munch(x.decode('utf-8').split('=', 1) for x in txt_answer[0].strings))
@@ -51,7 +55,7 @@ def main(domain):
             raise Exception('unknown version')
 
         # fetch the A record to obtain the IPv4 address
-        a_answer = dns.resolver.resolve(node.target, 'A')
+        a_answer = query(node.target, 'A')
         if len(a_answer) != 1:
             raise Exception('incorrect number of A records')
         node.address = a_answer[0].address
