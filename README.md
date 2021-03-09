@@ -7,4 +7,4 @@ inspired by [jwhited/wgsd](https://github.com/jwhited/wgsd) but
 
 `wgsd` creates the PTR/SRV/TXT/A records necessary to identify a wireguard node.
 
-`wgsd-client` emits pubkey/port/address tuples resolved vrom the above records.
+`wgsd-client` emits pubkey/port/address tuples resolved from the above records.
